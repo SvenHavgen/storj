@@ -12,8 +12,10 @@ import (
 	"encoding/asn1"
 	"encoding/pem"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 
 	"github.com/zeebo/errs"
 
@@ -93,7 +95,7 @@ func decodePEM(PEMBytes []byte) ([][]byte, error) {
 	return DERBytes, nil
 }
 
-func newCAWorker(ctx context.Context, difficulty uint16, parentCert *x509.Certificate, parentKey crypto.PrivateKey, caC chan FullCertificateAuthority, eC chan error) {
+func newCAWorker(ctx context.Context, workerid int, highscore *uint32, difficulty uint16, parentCert *x509.Certificate, parentKey crypto.PrivateKey, caC chan FullCertificateAuthority, eC chan error) {
 	var (
 		k   crypto.PrivateKey
 		i   storj.NodeID
@@ -102,6 +104,7 @@ func newCAWorker(ctx context.Context, difficulty uint16, parentCert *x509.Certif
 	for {
 		select {
 		case <-ctx.Done():
+			eC <- ctx.Err()
 			return
 		default:
 			k, err = peertls.NewKey()
@@ -127,7 +130,15 @@ func newCAWorker(ctx context.Context, difficulty uint16, parentCert *x509.Certif
 			eC <- err
 			continue
 		}
+
+		hs := atomic.LoadUint32(highscore)
+		if uint32(d) > hs {
+			atomic.CompareAndSwapUint32(highscore, hs, uint32(d))
+			log.Printf("Found a certificate matching difficulty of %d\n", hs)
+		}
+
 		if d >= difficulty {
+			log.Printf("Found a certificate matching difficulty of %d\n", d)
 			break
 		}
 	}

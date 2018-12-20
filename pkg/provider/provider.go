@@ -71,12 +71,15 @@ func SetupIdentity(ctx context.Context, c CASetupConfig, i IdentitySetupConfig) 
 		return ErrSetup.New("certificate authority file(s) exist: %s", s)
 	}
 
-	t, err := time.ParseDuration(c.Timeout)
-	if err != nil {
-		return errs.Wrap(err)
+	if c.Timeout != "0" {
+		t, err := time.ParseDuration(c.Timeout)
+		if err != nil {
+			return errs.Wrap(err)
+		}
+		var cancel func()
+		ctx, cancel = context.WithTimeout(ctx, t)
+		defer cancel()
 	}
-	ctx, cancel := context.WithTimeout(ctx, t)
-	defer cancel()
 
 	// Create a new certificate authority
 	ca, err := c.Create(ctx)
